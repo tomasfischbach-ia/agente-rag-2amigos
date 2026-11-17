@@ -1,0 +1,390 @@
+{
+  "name": "Proyecto Final - Ingesta RAG (sitio 2 Amigos -> Supabase)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 1. Fuente: sitio web de 2 Amigos\nDescarga una página cada 4 segundos, con reintentos y un navegador declarado, para no gatillar la verificación anti-bot del hosting.",
+        "height": 420,
+        "width": 680,
+        "color": 7
+      },
+      "id": "65657cc0-8bf2-4f99-bb3d-294a6ab85d63",
+      "name": "Nota 467b",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Validación antes de guardar\nDescarta páginas con error de conexión, código HTTP de error, bloqueo anti-bot o poco texto. Nada inválido llega a la base vectorial.",
+        "height": 420,
+        "width": 500,
+        "color": 3
+      },
+      "id": "6b9e4787-a05b-44a7-b8fc-9f3bfebfab41",
+      "name": "Nota 5bf7",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. RAG: indexación en Supabase\nCorta el texto en fragmentos de 800 caracteres, genera embeddings con Gemini (gemini-embedding-001, 3072 dimensiones) y los guarda con la URL de origen como metadata.",
+        "height": 700,
+        "width": 640,
+        "color": 4
+      },
+      "id": "e9bccabe-6023-4aaa-892d-38d0afd86988",
+      "name": "Nota fd3d",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "81083300-876b-4ac7-8479-4bf2e187611c",
+      "name": "Ejecutar ingesta",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        64,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Páginas públicas del sitio de 2 Amigos Aberturas que forman la base de conocimiento.\n// Para sumar páginas nuevas (por ejemplo subcategorías de ventanas), agregalas acá.\nconst base = \"https://2amigosaberturas.com.ar\";\nconst paginas = [\n  { path: \"/\",                                 categoria: \"inicio\" },\n  { path: \"/pages/catalogo/\",                  categoria: \"catalogo\" },\n  { path: \"/pages/catalogo/puertas/\",          categoria: \"puertas\" },\n  { path: \"/pages/catalogo/puertas/seguridad/\",  categoria: \"puertas-seguridad\" },\n  { path: \"/pages/catalogo/puertas/exterior/\",   categoria: \"puertas-exterior\" },\n  { path: \"/pages/catalogo/puertas/interior/\",   categoria: \"puertas-interior\" },\n  { path: \"/pages/catalogo/puertas/pivotantes/\", categoria: \"puertas-pivotantes\" },\n  { path: \"/pages/catalogo/puertas/cortafuego/\", categoria: \"puertas-cortafuego\" },\n  { path: \"/pages/catalogo/ventanas/\",         categoria: \"ventanas\" },\n  { path: \"/pages/catalogo/portones/\",         categoria: \"portones\" },\n  { path: \"/pages/catalogo/rejas/\",            categoria: \"rejas\" },\n  { path: \"/pages/catalogo/mosquiteros/\",      categoria: \"mosquiteros\" },\n  { path: \"/pages/catalogo/cerramientos/\",     categoria: \"cerramientos\" },\n  { path: \"/pages/nosotros/\",                  categoria: \"empresa\" },\n  { path: \"/pages/contacto/\",                  categoria: \"contacto\" }\n];\nreturn paginas.map(p => ({ json: { url: base + p.path, categoria: p.categoria } }));\n"
+      },
+      "id": "fe77c2df-39d7-4aee-b987-d5f6a43dca12",
+      "name": "URLs a indexar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "es-AR,es;q=0.9"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 4000
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "9293fae5-15e7-4a7d-a5f4-509f4c2971d5",
+      "name": "Descargar página",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        512,
+        272
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Convierte el HTML en texto limpio y decide si la página sirve para la base de conocimiento.\n// Motivos de descarte: error de conexión, código HTTP de error, bloqueo anti-bot del hosting o poco texto.\nconst urls = $('URLs a indexar').all();\nconst salida = [];\n\n$input.all().forEach((item, i) => {\n  const origen = urls[i] ? urls[i].json : {};\n  const status = item.json.statusCode ?? (item.json.error ? 0 : 200);\n  let html = item.json.body ?? item.json.data ?? '';\n  if (typeof html !== 'string') html = JSON.stringify(html);\n\n  const t = html.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i);\n  const titulo = t ? t[1].replace(/\\s+/g, ' ').trim() : '';\n\n  const texto = html\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<noscript[\\s\\S]*?<\\/noscript>/gi, ' ')\n    .replace(/<(header|nav|footer)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '\"')\n    .replace(/&#39;/g, \"'\").replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  let motivo = '';\n  if (item.json.error) motivo = 'Error de conexión: ' + (item.json.error.message || 'sin detalle');\n  else if (status >= 400) motivo = 'HTTP ' + status;\n  else if (/request is being verified|One moment, please/i.test(html)) motivo = 'Bloqueada por la verificación anti-bot del hosting';\n  else if (texto.length < 300) motivo = 'Texto insuficiente (' + texto.length + ' caracteres)';\n\n  salida.push({ json: {\n    url: origen.url, categoria: origen.categoria, titulo,\n    texto, caracteres: texto.length, valido: motivo === '', motivo\n  }});\n});\n\nreturn salida;\n"
+      },
+      "id": "2eee14d3-d35a-4aab-b50b-a245aaa1ace2",
+      "name": "Limpiar y validar HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "f5e1af41-28ec-4f73-b172-afcce1825acc",
+              "leftValue": "={{ $json.valido }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e81bbefa-9a91-4f2c-978e-3429e5c1e66d",
+      "name": "¿Página válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": {
+          "__rl": true,
+          "value": "documents",
+          "mode": "list",
+          "cachedResultName": "documents",
+          "cachedResultUrl": ""
+        },
+        "options": {
+          "queryName": "match_documents"
+        }
+      },
+      "id": "13518be3-15d3-4a29-8493-c0dc4f04a678",
+      "name": "Guardar en Supabase",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        192
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "aYBgHRtuNJNvOV7q",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "32818536-e8ac-420a-9129-ee7e034e8653",
+      "name": "Embeddings Gemini",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        432
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "5ZhYEBuZXOLsZRe4",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.texto }}",
+        "textSplittingMode": "custom",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "source",
+                "value": "={{ $json.url }}"
+              },
+              {
+                "name": "categoria",
+                "value": "={{ $json.categoria }}"
+              },
+              {
+                "name": "titulo",
+                "value": "={{ $json.titulo }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "844577c5-7e5e-4a22-82fb-d416269d0b88",
+      "name": "Cargador de documentos",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1552,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "chunkSize": 800,
+        "chunkOverlap": 100,
+        "options": {}
+      },
+      "id": "7f04bf69-5bae-4049-9922-919b4d0a4d14",
+      "name": "Divisor de texto",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        1632,
+        608
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "d3276a68-2774-4731-8125-ef60130ecdc1",
+      "name": "Páginas descartadas (revisar)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1072,
+        512
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Ejecutar ingesta": {
+      "main": [
+        [
+          {
+            "node": "URLs a indexar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "URLs a indexar": {
+      "main": [
+        [
+          {
+            "node": "Descargar página",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Descargar página": {
+      "main": [
+        [
+          {
+            "node": "Limpiar y validar HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limpiar y validar HTML": {
+      "main": [
+        [
+          {
+            "node": "¿Página válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Página válida?": {
+      "main": [
+        [
+          {
+            "node": "Guardar en Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Páginas descartadas (revisar)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Guardar en Supabase",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cargador de documentos": {
+      "ai_document": [
+        [
+          {
+            "node": "Guardar en Supabase",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Divisor de texto": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Cargador de documentos",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "a9b7bd36-8ac0-40c9-b307-eb1700630759",
+  "meta": {
+    "instanceId": "df30d21bb6148b82e637139d95a815c2c83b14dedcb13ce48a70e8df66475134"
+  },
+  "nodeGroups": [],
+  "id": "rCM70YtcCwRB5Nl0",
+  "tags": []
+}

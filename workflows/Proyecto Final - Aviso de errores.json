@@ -1,0 +1,86 @@
+{
+  "name": "Proyecto Final - Aviso de errores",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Manejo global de errores\nSe activa cuando falla cualquier ejecución del workflow principal (configurado en Settings > Error Workflow) y avisa por mail.",
+        "height": 360,
+        "width": 700,
+        "color": 3
+      },
+      "id": "f4f62590-ab48-48de-889a-5c2b0c386e80",
+      "name": "Nota 7d2e",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "e2301d3f-070c-4228-b266-dbc1ff504ab4",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        48,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "asesor@ejemplo.com",
+        "subject": "=Falló un workflow: {{ $json.workflow.name }}",
+        "emailType": "text",
+        "message": "=Workflow: {{ $json.workflow.name }}\nNodo: {{ $json.execution.lastNodeExecuted }}\nError: {{ $json.execution.error.message }}\nEjecución: {{ $json.execution.url }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "a21c4923-449b-4ab0-b016-e12a64317df1",
+      "name": "Avisar la falla (Gmail)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        352,
+        192
+      ],
+      "webhookId": "13ce3134-2fa2-427b-b99d-2310bd3dd3cc",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "cEBtOZ700TttrGJc",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Avisar la falla (Gmail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "17fc049e-84f5-48a9-800a-90ebeecad4c7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "df30d21bb6148b82e637139d95a815c2c83b14dedcb13ce48a70e8df66475134"
+  },
+  "nodeGroups": [],
+  "id": "zwvu1qYhlrQQ9Cu6",
+  "tags": []
+}
